@@ -31,15 +31,9 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 crsplot = ccrs.Mollweide()
 
-# Get the directory of the current script (the 'Codes' directory)
-current_dir = os.path.dirname(os.path.abspath(__file__))
-# Navigate up to the 'FHN' directory
-fhn_dir = os.path.abspath(os.path.join(current_dir, '..'))
-# Set 'FHN' as the working directory
-os.chdir(fhn_dir)
-MAINPATH = fhn_dir
 
-PATHRESEARCH = '/home/emanuele/Research/'
+
+MAINPATH = '/home/emanuele/Research/APES/FHN/'
 
 
 REGION_TO_CONTINENT = {'Central Asia': 'Asia', 'Eastern Africa': 'Africa','Eastern Asia': 'Asia','Eastern Europe': 'Europe',
