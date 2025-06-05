@@ -31,9 +31,23 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 crsplot = ccrs.Mollweide()
 
+from palettable.cartocolors.diverging import Geyser_5_r
 
+import matplotlib.pyplot as plt
+import matplotlib as mpl
 
-MAINPATH = '/home/emanuele/Research/APES/FHN/'
+import matplotlib.gridspec as gridspec
+
+# Set global font
+mpl.rcParams['font.family'] = 'Liberation Sans'  # or 'Arial', 'Times New Roman', etc.
+
+# Get the directory of the current script (the 'Codes' directory)
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# Navigate up to the 'FHN' directory
+fhn_dir = os.path.abspath(os.path.join(current_dir, '..'))
+# Set 'FHN' as the working directory
+os.chdir(fhn_dir)
+MAINPATH = fhn_dir
 
 
 REGION_TO_CONTINENT = {'Central Asia': 'Asia', 'Eastern Africa': 'Africa','Eastern Asia': 'Asia','Eastern Europe': 'Europe',
@@ -191,15 +205,14 @@ def plot_data_maps(ax, data, cmap, norm, src):
     gl.bottom_labels = False
     show(data, cmap=cmap, norm=norm, ax=ax, transform=src.transform)
 
-
-def add_legend(ax, patches, title):
+def add_legend(ax, patches, title, x=0.25, y=0.25):
     """Add a legend to the plot."""
     legend = ax.legend(handles=patches, 
                        loc='center right', 
-                       bbox_to_anchor=(1.3, 0.5), 
-                       title=title, title_fontsize=14)
+                       fontsize=8,
+                       bbox_to_anchor=(x, y), 
+                       title=title, title_fontsize=10)
     legend.get_title().set_ha('center')
-    
 
 
 
@@ -235,63 +248,32 @@ def rel_change_df(df1, val):
     #merged_df = merged_df.sort_values(by='relative_change')
     return merged_df
 
-## Define costum regions ####################################################################################################################
-fout = os.path.join(MAINPATH,'Data/SHAPEFILES/world-custom_regions_r.shp')
-gdf1 = gpd.read_file(fout)
-PATHD = os.path.join(MAINPATH, 'Data/Proximity/proximity_{window}_{year}.tif')           ## Proximity 
-PATHP = os.path.join(MAINPATH, 'Data/Population/population_{window}_{year}_v5.tif')       ## Population
-PATHF = os.path.join(MAINPATH,'Data/Landuse/Forest/forest_{window}_{year}.tif')             ## Forest
-PATHA = os.path.join(MAINPATH, 'Data/OUTPUT/FAC/FAC_{window}_{year}.tif')                ## FAP
-PATHN = os.path.join(MAINPATH, 'Data/OUTPUT/FHN/FHN_{window}_{year}.tif')                    ## FHN
-PATHFPP = os.path.join(MAINPATH, 'Data/OUTPUT/FPP/FPP_{window}_{year}.tif')                 ## FPP
-PATHS = [PATHD, PATHP, PATHF, PATHA, PATHN, PATHFPP]
-NAMES = ['Proximity', 'Population', 'Forest', 'FAP', 'FHN', 'FPP']
-def returnDF():
-    # Ask the user for input
-    j = int(input("Enter the index value for j: 0: Proximiy, 1: Population, 2: Forest, 3: FAP, 4: FHN, 5: FPP ---->  "))
-    PATHL = PATHS[j]
-    window = 50
-    YEARS = np.arange(1975, 2025, 5)
-    cols = ['year', 'region', 'mean', 'median', 'stdev', 'all_vals', 'sum']
-    df1 = pd.DataFrame(columns=cols)
-    distr = []
-    for year in YEARS:
-        file_raster_path = PATHL.format(window=window, year=year)
-        # Read raster data
-        data, src = read_raster(file_raster_path)
-        for index, region in gdf1.iterrows(): 
-            dat, _ = mask(src, [region['geometry']], crop=True)
-            dat_values = dat.flatten()
-            dat_values = dat_values[~np.isnan(dat_values)]
-            data = [year, gdf1['custom_reg'][index], np.nanmean(dat), np.nanmedian(dat), np.nanstd(dat), dat_values, np.nansum(dat)]
-            df1 = pd.concat([df1, pd.DataFrame(columns=cols, data=[data])], ignore_index=True)
-    return df1
 
+from rasterio.warp import calculate_default_transform, reproject, Resampling
+from rasterio.io import MemoryFile
 
-def returnRelChange(df1, val):
-    df_1975 = df1[df1['year'] == 1975]
-    df_2020 = df1[df1['year'] == 2020]
+def reproject_raster_to_4326(src):
+    dst_crs = 'EPSG:4326'
+    transform, width, height = calculate_default_transform(
+        src.crs, dst_crs, src.width, src.height, *src.bounds)
     
-    # Merge the data on the 'region' column to compare 1975 and 2020
-    merged_df = pd.merge(df_1975[['region', val]], df_2020[['region', val]], 
-                         on='region', suffixes=('_1975', '_2020'))
-    col1 = val+'_2020'
-    col2 = val+'_1975'
-    # Calculate the relative change
-    merged_df['relative_change'] = (merged_df[col1] - merged_df[col2]) / merged_df[col2] * 100
-    #merged_df = merged_df.sort_values(by='relative_change')
-    return merged_df
-
-def returnTrend(df1, val):
-    df_1975 = df1[df1['year'] == 1975]
-    df_2020 = df1[df1['year'] == 2020]
+    kwargs = src.meta.copy()
+    kwargs.update({
+        'crs': dst_crs,
+        'transform': transform,
+        'width': width,
+        'height': height
+    })
     
-    # Merge the data on the 'region' column to compare 1975 and 2020
-    merged_df = pd.merge(df_1975[['region', val]], df_2020[['region', val]], 
-                         on='region', suffixes=('_1975', '_2020'))
-    col1 = val+'_2020'
-    col2 = val+'_1975'
-    # Calculate the relative change
-    merged_df['relative_change'] = (merged_df[col1] - merged_df[col2]) / (2020-1975)
-    #merged_df = merged_df.sort_values(by='relative_change')
-    return merged_df
+    memfile = MemoryFile()
+    with memfile.open(**kwargs) as dst:
+        reproject(
+            source=rasterio.band(src, 1),
+            destination=rasterio.band(dst, 1),
+            src_transform=src.transform,
+            src_crs=src.crs,
+            dst_transform=transform,
+            dst_crs=dst_crs,
+            resampling=Resampling.nearest)
+        data = dst.read(1)
+    return data, memfile.open()
